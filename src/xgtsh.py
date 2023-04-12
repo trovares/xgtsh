@@ -387,7 +387,7 @@ class XgtCli(cmd.Cmd):
       print(f"      duration: {duration}")
     if len(job.description) > 0:
       print(f"   description: {job.description}")
-    if len(job.query_plan) > 0:
+    if 'query_plan' in dir(job) and len(job.query_plan) > 0:
       print(f"   query plan: {job.query_plan}")
     if job.visited_edges is not None and len(job.visited_edges) > 0:
       print(f" visited edges: {job.visited_edges}")
