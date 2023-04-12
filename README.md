@@ -1,2 +1,19 @@
 # xgtsh
 Command-line utility for Trovares xGT server
+
+## Installation
+
+Copy the ``src/xgtsh.py`` file to a directory in your ``$PATH``.
+Rename the file to ``xgtsh`` in that directory.
+
+## Usage
+
+In a bash shell, simply type:  ``xgtsh``
+
+This xgt shell will retain a history of commands, even across multiple runs.
+The up arrow should provide you access to the previous commands.
+
+There is some tab completion provided for the commands.
+
+To see a list of commands, enter ``help`` at the ``xGT>>`` prompt.
+
