@@ -393,7 +393,7 @@ class XgtCli(cmd.Cmd):
       print(f" visited edges: {job.visited_edges}")
     if job.total_visited_edges is not None:
       print(f" total visited: {job.total_visited_edges}")
-    if job.timing is not None and len(job.timing) > 0:
+    if 'timing' in dir(job) and job.timing is not None and len(job.timing) > 0:
       print(f"        timing:")
       for line in job.timing:
         print(line)
