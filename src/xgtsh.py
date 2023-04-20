@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#! python3
 # -*- coding: utf-8 -*- --------------------------------------------------===#
 #
 #  Copyright 2023 Trovares Inc.
