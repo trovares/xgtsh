@@ -1,0 +1,9 @@
+for p in python3 python; do
+  PYTHON=$(which ${p})
+  if [[ -n "${PYTHON}" ]]; then
+    break
+  fi
+done
+
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+${PYTHON} ${SCRIPT_DIR}/xgtsh.py
