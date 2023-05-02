@@ -1,4 +1,4 @@
-#! python3
+#! /usr/bin/env python
 # -*- coding: utf-8 -*- --------------------------------------------------===#
 #
 #  Copyright 2023 Trovares Inc.
@@ -175,14 +175,22 @@ class XgtCli(cmd.Cmd):
     return False
 
   def do_jobs(self, line)->bool:
-    """Show summary information on jobs"""
+    """
+    Show summary information on jobs
+
+      xGT>> jobs (<state>)
+
+    If the optional <state> parameter is provided, show only jobs in that state
+    """
     if self.__server is None:
       print("Not connected to a server")
       return False
     jobs = self.__server.get_jobs()
     jobs_map = {_.id:_ for _ in jobs}
     for job_id in sorted([_.id for _ in jobs]):
-      print(f"{job_id:3d}: {jobs_map[job_id]}")
+      job = jobs_map[job_id]
+      if len(line) < 1 or job.status == line:
+        print(f"{job_id:3d}: {jobs_map[job_id]}")
     return False
 
   def do_memory(self, line)->bool:
