@@ -405,6 +405,10 @@ class XgtCli(cmd.Cmd):
       print(f"        timing:")
       for line in job.timing:
         print(line)
+    if '_timing' in dir(job) and job._timing is not None and len(job._timing) > 0:
+      print(f"       _timing:")
+      for line in job._timing:
+        print(line)
     if job.schema is not None and len(job.schema) > 0:
       print(f"       schema: {job.schema}")
     return None
