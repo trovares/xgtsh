@@ -167,7 +167,13 @@ class XgtCli(cmd.Cmd):
     return self.do_exit(line)
 
   def do_job(self, line)->bool:
-    """Show detail information on a job"""
+    """
+    Show detail information on a job
+
+      xGT>> job <job-number>
+      xGT>> job <start-job-number> (<end-job-number>)
+
+    """
     if self.__server is None:
       print("Not connected to a server")
       return False
@@ -373,44 +379,55 @@ class XgtCli(cmd.Cmd):
 
   def __process_job_command(self, line) -> None:
     fields = line.split()
-    if len(fields) != 1:
-      print(f"Command format: job <job_id>")
-      return None
-    try:
-      job_id = int(fields[0])
-    except:
-      print(f"Error: job_id must be an integer")
-      return None
-    job = self.__server.get_jobs([job_id])[0]
-    print(f"Job #{job.id}, userid: {job.user}, status {job.status}:")
-    if job.status == 'unknown_job_status':
+    if len(fields) < 1 or len(fields) > 2:
+      print(f"Command format: job <job_id> (<end-job-number>)")
       return None
 
-    if job.status == 'running':
-      print(f"  start time: {job.start_time}")
-    elif job.status != 'scheduled':
-      duration = job.end_time - job.start_time
-      print(f"    start time: {job.start_time}")
-      print(f"      end time: {job.end_time}")
-      print(f"      duration: {duration}")
-    if len(job.description) > 0:
-      print(f"   description: {job.description}")
-    if 'query_plan' in dir(job) and len(job.query_plan) > 0:
-      print(f"   query plan: {job.query_plan}")
-    if job.visited_edges is not None and len(job.visited_edges) > 0:
-      print(f" visited edges: {job.visited_edges}")
-    if job.total_visited_edges is not None:
-      print(f" total visited: {job.total_visited_edges}")
-    if 'timing' in dir(job) and job.timing is not None and len(job.timing) > 0:
-      print(f"        timing:")
-      for line in job.timing:
-        print(line)
-    if '_timing' in dir(job) and job._timing is not None and len(job._timing) > 0:
-      print(f"       _timing:")
-      for line in job._timing:
-        print(line)
-    if job.schema is not None and len(job.schema) > 0:
-      print(f"       schema: {job.schema}")
+    try:
+      start_job = int(fields[0])
+      if len(fields) > 1:
+        end_job = int(fields[1])
+      else:
+        end_job = start_job
+    except:
+      print(f"Command format: job <job_id> (<end-job-number>)")
+      return None
+
+    jobs = self.__server.get_jobs()
+    jobs_map = {_.id:_ for _ in jobs}
+    for j in range(start_job, end_job+1):
+      if j in jobs_map:
+        job = jobs_map[j]
+        print(f"Job #{job.id}, userid: {job.user}, status {job.status}:")
+
+#       if job.status == 'unknown_job_status':
+#         return None
+
+        if job.status == 'running':
+          print(f"  start time: {job.start_time}")
+        elif job.status != 'scheduled':
+          duration = job.end_time - job.start_time
+          print(f"    start time: {job.start_time}")
+          print(f"      end time: {job.end_time}")
+          print(f"      duration: {duration}")
+        if len(job.description) > 0:
+          print(f"   description: {job.description}")
+        if 'query_plan' in dir(job) and len(job.query_plan) > 0:
+          print(f"   query plan: {job.query_plan}")
+        if job.visited_edges is not None and len(job.visited_edges) > 0:
+          print(f" visited edges: {job.visited_edges}")
+        if job.total_visited_edges is not None:
+          print(f" total visited: {job.total_visited_edges}")
+        if 'timing' in dir(job) and job.timing is not None and len(job.timing) > 0:
+          print(f"        timing:")
+          for line in job.timing:
+            print(line)
+        if '_timing' in dir(job) and job._timing is not None and len(job._timing) > 0:
+          print(f"       _timing:")
+          for line in job._timing:
+            print(line)
+        if job.schema is not None and len(job.schema) > 0:
+          print(f"       schema: {job.schema}")
     return None
 
 #----------------------------------------------------------------------------
