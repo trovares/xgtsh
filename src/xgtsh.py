@@ -47,10 +47,10 @@ class XgtCli(cmd.Cmd):
   original_prompt = 'xGT>> '
   prompt = original_prompt
 
-  def __init__(self, host, port, userid):
+  def __init__(self, host, port, username):
     super().__init__()
 
-    self.__userid = userid
+    self.__username = username
     self.__port = port
     self.__hostname = host
     self.__server = self.__connect_to_server()
@@ -364,15 +364,19 @@ class XgtCli(cmd.Cmd):
       try:
         conn = xgt.Connection(port = self.__port,
                               host = self.__hostname,
-                              userid = self.__userid,
-                              credentials = getpass.getpass())
+                              auth = xgt.BasicAuth(
+                                  username = self.__username,
+                                  credentials = getpass.getpass())
+                             )
       except xgt.XgtError as exc:
         print(f"Unable to connect to xgtd server:\n{exc}")
     else:
       try:
         conn = xgt.Connection(port = self.__port,
                               host = self.__hostname,
-                              userid = self.__userid)
+                              auth = xgt.BasicAuth(
+                                  username = self.__username),
+                             )
       except xgt.XgtError as exc:
         print(f"Unable to connect to xgtd server:\n{exc}")
     return conn
@@ -398,7 +402,7 @@ class XgtCli(cmd.Cmd):
     for j in range(start_job, end_job+1):
       if j in jobs_map:
         job = jobs_map[j]
-        print(f"Job #{job.id}, userid: {job.user}, status {job.status}:")
+        print(f"Job #{job.id}, username: {job.user}, status {job.status}:")
 
 #       if job.status == 'unknown_job_status':
 #         return None
@@ -443,10 +447,10 @@ if __name__ == '__main__' :
       help='connect to this port, default=4367')
   parser.add_argument('-u', '--user', type=str,
       default=getpass.getuser(),
-      help=f"userid to use for the connection, default '{getpass.getuser()}'")
+      help=f"username to use for the connection, default '{getpass.getuser()}'")
   parser.add_argument('-v', '--verbose', action='store_true',
       help="show detailed information")
   options = parser.parse_args(sys.argv[1:])
 
-  instance = XgtCli(host=options.host, port=options.port, userid=options.user)
+  instance = XgtCli(host=options.host, port=options.port, username=options.user)
   instance.cmdloop()
