@@ -281,21 +281,21 @@ class XgtCli(cmd.Cmd):
       return False
     ns = str(fields[0])
 
-    tables = self.__server.get_table_frames(namespace=ns)
+    tables = self.__server.get_frames(namespace=ns, frame_type='table')
     total_table_rows = 0
     for table in tables:
       if self.__verbose or not table.name.startswith('xgt__'):
         total_table_rows += table.num_rows
         print(f"TableFrame {table.name} has {table.num_rows:,} rows")
     print(f"Total table rows over all frames: {total_table_rows:,}")
-    vertices = self.__server.get_vertex_frames(namespace=ns)
+    vertices = self.__server.get_frames(namespace=ns, frame_type='vertex')
     total_vertices = 0
     for vertex in vertices:
       if self.__verbose or not vertex.name.startswith('xgt__'):
         total_vertices += vertex.num_rows
         print(f"VertexFrame {vertex.name} has {vertex.num_vertices:,} vertices")
     print(f"Total vertices over all frames: {total_vertices:,}")
-    edges = self.__server.get_edge_frames(namespace=ns)
+    edges = self.__server.get_frames(namespace=ns, frame_type='edge')
     total_edges = 0
     for edge in edges:
       if self.__verbose or not edge.name.startswith('xgt__'):
@@ -335,23 +335,9 @@ class XgtCli(cmd.Cmd):
       return False
     ns = str(fields[0])
 
-    edges = self.__server.get_edge_frames(namespace=ns)
-    for edge in edges:
-      self.__server.drop_frame(edge)
-      if self.__verbose:
-        print(f"EdgeFrame {edge.name} deleted")
-    self.__server.wait_for_metrics()
-    tables = self.__server.get_table_frames(namespace=ns)
-    for table in tables:
-      self.__server.drop_frame(table)
-      if self.__verbose:
-        print(f"TableFrame {table.name} deleted")
-    vertices = self.__server.get_vertex_frames(namespace=ns)
-    for vertex in vertices:
-      self.__server.drop_frame(vertex)
-      if self.__verbose:
-        print(f"VertexFrame {vertex.name} deleted")
-    if len(tables) + len(vertices) + len(edges) == 0:
+    frames = self.__server.get_frames(namespace=ns)
+    self.__server.drop_frames(frames)
+    if len(frames) == 0:
       print(f"No frames in namespace {ns} found")
     return False
   complete_zap = _namespace_complete
