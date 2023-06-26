@@ -335,10 +335,30 @@ class XgtCli(cmd.Cmd):
       return False
     ns = str(fields[0])
 
-    frames = self.__server.get_frames(namespace=ns)
-    self.__server.drop_frames(frames)
-    if len(frames) == 0:
-      print(f"No frames in namespace {ns} found")
+    if __version_is_since(1, 14, 0):
+      frames = self.__server.get_frames(namespace=ns)
+      self.__server.drop_frames(frames)
+      deleted_frames = len(frames)
+    else:
+      edges = self.__server.get_edge_frames(namespace=ns)
+      for edge in edges:
+        self.__server.drop_frame(edge)
+        if self.__verbose:
+          print(f"EdgeFrame {edge.name} deleted")
+      self.__server.wait_for_metrics()
+      tables = self.__server.get_table_frames(namespace=ns)
+      for table in tables:
+        self.__server.drop_frame(table)
+        if self.__verbose:
+          print(f"TableFrame {table.name} deleted")
+      vertices = self.__server.get_vertex_frames(namespace=ns)
+      for vertex in vertices:
+        self.__server.drop_frame(vertex)
+        if self.__verbose:
+          print(f"VertexFrame {vertex.name} deleted")
+      deleted_frames = len(tables) + len(vertices) + len(edges)
+
+    print(f"Deleted {deleted_frames} frames in namespace {ns}")
     return False
   complete_zap = _namespace_complete
 
@@ -419,6 +439,24 @@ class XgtCli(cmd.Cmd):
         if job.schema is not None and len(job.schema) > 0:
           print(f"       schema: {job.schema}")
     return None
+
+  def __version() -> (int):
+    return (
+        int(xgt.version.__version__major),
+        int(xgt.version.__version__minor),
+        int(xgt.version.__version__patch),
+        )
+  def __version_is_since(major, minor, patch):
+    (v1, v2, v3) = self.__version() 
+    if v1 > major:
+      return True
+    if v1 < major:
+      return False
+    if v2 > minor:
+      return True
+    if v2 < minor:
+      return False
+    return v3 >= patch
 
 #----------------------------------------------------------------------------
 
