@@ -6,4 +6,4 @@ for p in python3 python; do
 done
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-${PYTHON} ${SCRIPT_DIR}/xgtsh.py
+${PYTHON} ${SCRIPT_DIR}/xgtsh.py $*

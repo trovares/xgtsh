@@ -47,14 +47,14 @@ class XgtCli(cmd.Cmd):
   original_prompt = 'xGT>> '
   prompt = original_prompt
 
-  def __init__(self, host, port, username):
+  def __init__(self, host, port, username, verbose = False):
     super().__init__()
 
     self.__username = username
     self.__port = port
     self.__hostname = host
+    self.__verbose = verbose
     self.__server = self.__connect_to_server()
-    self.__verbose = False
 
     if READLINE_DEFINED:
       # --- make sure tab completion works on a MAC
@@ -377,6 +377,8 @@ class XgtCli(cmd.Cmd):
       except xgt.XgtError as exc:
         print(f"Unable to connect to xgtd server:\n{exc}")
     else:
+      if self.__verbose:
+        print(f"Trying to connect to server {self.__username}@{self.__hostname}:{self.__port}")
       try:
         conn = xgt.Connection(port = self.__port,
                               host = self.__hostname,
@@ -476,5 +478,6 @@ if __name__ == '__main__' :
       help="show detailed information")
   options = parser.parse_args(sys.argv[1:])
 
-  instance = XgtCli(host=options.host, port=options.port, username=options.user)
+  instance = XgtCli(host=options.host, port=options.port, username=options.user,
+                    verbose=options.verbose)
   instance.cmdloop()
