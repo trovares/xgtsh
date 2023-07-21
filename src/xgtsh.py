@@ -335,7 +335,7 @@ class XgtCli(cmd.Cmd):
       return False
     ns = str(fields[0])
 
-    if __version_is_since(1, 14, 0):
+    if self.__version_is_since(1, 14, 0):
       frames = self.__server.get_frames(namespace=ns)
       self.__server.drop_frames(frames)
       deleted_frames = len(frames)
