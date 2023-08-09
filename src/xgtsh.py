@@ -22,6 +22,7 @@ import cmd
 import getpass
 import os
 import sys
+import warnings
 
 import xgt
 
@@ -47,13 +48,18 @@ class XgtCli(cmd.Cmd):
   original_prompt = 'xGT>> '
   prompt = original_prompt
 
-  def __init__(self, host, port, username, verbose = False):
+  def __init__(self, host, port, username, verbose = False, debug = False):
     super().__init__()
 
     self.__username = username
     self.__port = port
     self.__hostname = host
     self.__verbose = verbose
+    self.__debug = debug
+    if self.__debug:
+      warnings.simplefilter("default")
+    else:
+      warnings.simplefilter("ignore")
     self.__server = self.__connect_to_server()
 
     if READLINE_DEFINED:
@@ -132,6 +138,16 @@ class XgtCli(cmd.Cmd):
         return False
 
       print("\n".join([f"{k} = {v}" for k,v in sorted(config.items())]))
+    return False
+
+  def do_debug(self, line)->bool:
+    """Set debug on or off"""
+    if len(line) > 1 and line.lower() == "on":
+      self.__debug = True
+      warnings.simplefilter("default")
+    else:
+      self.__debug = False
+      warnings.simplefilter("ignore")
     return False
 
   def do_default_namespace(self, line)->bool:
@@ -442,13 +458,7 @@ class XgtCli(cmd.Cmd):
           print(f"       schema: {job.schema}")
     return None
 
-  def __version() -> (int):
-    return (
-        int(xgt.version.__version__major),
-        int(xgt.version.__version__minor),
-        int(xgt.version.__version__patch),
-        )
-  def __version_is_since(major, minor, patch):
+  def __version_is_since(self, major, minor, patch):
     (v1, v2, v3) = self.__version() 
     if v1 > major:
       return True
@@ -460,6 +470,13 @@ class XgtCli(cmd.Cmd):
       return False
     return v3 >= patch
 
+  def __version(self) -> (int):
+    return (
+        int(xgt.__version_major__),
+        int(xgt.__version_minor__),
+        int(xgt.__version_patch__),
+        )
+
 #----------------------------------------------------------------------------
 
 if __name__ == '__main__' :
@@ -467,6 +484,8 @@ if __name__ == '__main__' :
   parser = argparse.ArgumentParser(
       prog=name,
       description='Command-line interface to Trovares xGT server')
+  parser.add_argument('-d', '--debug', action='store_true',
+      help="show debug information")
   parser.add_argument('--host', type=str, default='localhost',
       help="connect to this host name, default='localhost'")
   parser.add_argument('-p', '--port', type=int, default=4367,
@@ -479,5 +498,5 @@ if __name__ == '__main__' :
   options = parser.parse_args(sys.argv[1:])
 
   instance = XgtCli(host=options.host, port=options.port, username=options.user,
-                    verbose=options.verbose)
+                    verbose=options.verbose, debug=options.debug)
   instance.cmdloop()
