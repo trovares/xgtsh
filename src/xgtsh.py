@@ -21,10 +21,17 @@ import argparse
 import cmd
 import getpass
 import os
+import pprint
 import sys
 import warnings
 
 import xgt
+
+try:
+  import pandas as pd
+  HASPANDAS=True
+except:
+  HASPANDAS = False
 
 # import the linux or windows version of readline for auto completion
 READLINE_DEFINED = False
@@ -240,8 +247,12 @@ class XgtCli(cmd.Cmd):
       print("Not connected to a server")
     else:
       job = self.__server.run_job(line)
-      df = job.get_data_pandas()
-      print(df)
+      if HASPANDAS:
+        df = job.get_data_pandas()
+        print(df)
+      else:
+        data = job.get_data()
+        pprint.pprint(data)
     return False
 
   def do_schema(self, line)->bool:
@@ -283,7 +294,10 @@ class XgtCli(cmd.Cmd):
           return False
     offset = 0
     data = frame.get_data(offset, 20)
-    print(f"Data:\n{data}")
+    print("Data:")
+    for row in data:
+      pprint.pprint(row)
+    # pprint.pprint(data)
     return False
 
   def do_show(self, line)->bool:
