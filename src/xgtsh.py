@@ -241,7 +241,7 @@ class XgtCli(cmd.Cmd):
       print(", ".join(namespaces))
     return False
 
-  def do_query(self, line)->bool:
+  def do_query(self, line:str)->bool:
     """Run a query"""
     if self.__server is None:
       print("Not connected to a server")
@@ -253,6 +253,22 @@ class XgtCli(cmd.Cmd):
       else:
         data = job.get_data()
         pprint.pprint(data)
+    return False
+
+  def do_save(self, line:str)->bool:
+    """Save a frame to a file"""
+    fields = line.split()
+    if len(fields) < 2:
+      print(f"Usage: {self.prompt} save <frame-name> <filename>")
+      return False
+    frame_name = fields[0]
+    filename = fields[1]
+    try:
+      frame = self.__server.get_frame(frame_name)
+    except:
+      print(f"Frame {frame_name} does not exist")
+      return False
+    frame.save(filename, headers=True)
     return False
 
   def do_schema(self, line)->bool:
@@ -297,7 +313,6 @@ class XgtCli(cmd.Cmd):
     print("Data:")
     for row in data:
       pprint.pprint(row)
-    # pprint.pprint(data)
     return False
 
   def do_show(self, line)->bool:
@@ -473,7 +488,7 @@ class XgtCli(cmd.Cmd):
     return None
 
   def __version_is_since(self, major, minor, patch):
-    (v1, v2, v3) = self.__version() 
+    (v1, v2, v3) = self.__version()
     if v1 > major:
       return True
     if v1 < major:
