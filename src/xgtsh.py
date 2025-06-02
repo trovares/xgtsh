@@ -248,7 +248,8 @@ class XgtCli(cmd.Cmd):
     else:
       job = self.__server.run_job(line)
       if HASPANDAS:
-        df = job.get_data_pandas()
+        data = job.get_data()
+        df = pd.DataFrame(data)
         print(df)
       else:
         data = job.get_data()
@@ -275,22 +276,17 @@ class XgtCli(cmd.Cmd):
     """Show schema of specified frame"""
     frame_name = line
     print(f"Showing schema of frame {frame_name}")
-    is_edge = False
     try:
-      frame = self.__server.get_edge_frame(frame_name)
-      is_edge = True
+      frame = self.__server.get_frame(frame_name)
     except:
-      try:
-        frame = self.__server.get_vertex_frame(frame_name)
-      except:
-        try:
-          frame = self.__server.get_table_frame(frame_name)
-        except:
-          print(f"Frame {frame_name} does not exist")
-          return False
+      print(f"Frame {frame_name} does not exist")
+      return False
+
     schema = frame.schema
     print(f"Schema: {schema}")
-    if is_edge:
+
+    # Check if it's an edge frame by examining the frame type
+    if hasattr(frame, 'source_name') and hasattr(frame, 'target_name'):
       print(f"Source frame: {frame.source_name}, Target frame: {frame.target_name}")
     return False
 
@@ -298,16 +294,11 @@ class XgtCli(cmd.Cmd):
     """Scroll through frame data"""
     frame_name = line
     try:
-      frame = self.__server.get_edge_frame(frame_name)
+      frame = self.__server.get_frame(frame_name)
     except:
-      try:
-        frame = self.__server.get_vertex_frame(frame_name)
-      except:
-        try:
-          frame = self.__server.get_table_frame(frame_name)
-        except:
-          print(f"Frame {frame_name} does not exist")
-          return False
+      print(f"Frame {frame_name} does not exist")
+      return False
+
     offset = 0
     data = frame.get_data(offset, 20)
     print("Data:")
