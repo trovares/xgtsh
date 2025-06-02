@@ -78,6 +78,39 @@ This is a command-line interface (CLI) shell for interacting with Trovares xGT g
 - When adding new features, consider using `__version_is_since()` checks
 - Maintain support for older xGT server versions where reasonable
 
+## Command Line Usage
+
+The xGT Shell can be used both interactively and non-interactively:
+
+### Interactive Mode
+```bash
+./src/xgtsh                    # Start interactive shell
+./src/xgtsh -v                 # Start with verbose output
+./src/xgtsh --host remote      # Connect to remote server
+```
+
+### Non-Interactive Modes
+```bash
+# Execute a single Cypher query
+./src/xgtsh -q "MATCH (n) RETURN count(n)"
+
+# Execute with different output formats
+./src/xgtsh -q "MATCH (n) RETURN n LIMIT 5" --format json
+./src/xgtsh -q "MATCH (n) RETURN n LIMIT 5" --format csv
+
+# Execute a single xGT shell command
+./src/xgtsh -c "show default"
+./src/xgtsh -c "memory"
+
+# Execute commands from a file
+./src/xgtsh -f script.xgt
+```
+
+### Output Formats
+- `table` (default) - Formatted table using pandas if available
+- `json` - JSON formatted output
+- `csv` - Comma-separated values
+
 ## Common Patterns to Follow
 
 ### Server Connection Check

@@ -398,6 +398,111 @@ class XgtCli(cmd.Cmd):
     return False
   complete_zap = _namespace_complete
 
+  #------------------------- Non-interactive execution methods
+
+  def execute_query_and_exit(self, query: str, format: str = 'table') -> None:
+    """Execute a single Cypher query and exit"""
+    if self.__server is None:
+      print("Not connected to a server", file=sys.stderr)
+      sys.exit(1)
+
+    try:
+      job = self.__server.run_job(query)
+      data = job.get_data()
+
+      if format == 'json':
+        import json
+        print(json.dumps(data, indent=2))
+      elif format == 'csv':
+        if HASPANDAS:
+          df = pd.DataFrame(data)
+          print(df.to_csv(index=False))
+        else:
+          import csv
+          import io
+          output = io.StringIO()
+          if data:
+            writer = csv.DictWriter(output, fieldnames=data[0].keys())
+            writer.writeheader()
+            writer.writerows(data)
+            print(output.getvalue())
+      else:  # table format (default)
+        if HASPANDAS:
+          df = pd.DataFrame(data)
+          print(df)
+        else:
+          pprint.pprint(data)
+    except Exception as e:
+      print(f"Error executing query: {e}", file=sys.stderr)
+      sys.exit(1)
+
+  def execute_command_and_exit(self, command: str) -> None:
+    """Execute a single shell command and exit"""
+    if self.__server is None:
+      print("Not connected to a server", file=sys.stderr)
+      sys.exit(1)
+
+    try:
+      # Parse the command and execute it
+      parts = command.split(None, 1)
+      if not parts:
+        return
+
+      cmd_name = parts[0]
+      cmd_args = parts[1] if len(parts) > 1 else ""
+
+      # Get the method for this command
+      method_name = f"do_{cmd_name}"
+      if hasattr(self, method_name):
+        method = getattr(self, method_name)
+        method(cmd_args)
+      else:
+        print(f"Unknown command: {cmd_name}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+      print(f"Error executing command: {e}", file=sys.stderr)
+      sys.exit(1)
+
+  def execute_file_and_exit(self, filename: str) -> None:
+    """Execute commands from a file and exit"""
+    if self.__server is None:
+      print("Not connected to a server", file=sys.stderr)
+      sys.exit(1)
+
+    try:
+      with open(filename, 'r') as f:
+        for line_num, line in enumerate(f, 1):
+          line = line.strip()
+          if not line or line.startswith('#'):
+            continue
+
+          try:
+            # Parse and execute each command
+            parts = line.split(None, 1)
+            if not parts:
+              continue
+
+            cmd_name = parts[0]
+            cmd_args = parts[1] if len(parts) > 1 else ""
+
+            # Get the method for this command
+            method_name = f"do_{cmd_name}"
+            if hasattr(self, method_name):
+              method = getattr(self, method_name)
+              result = method(cmd_args)
+              if result:  # Command returned True (exit request)
+                break
+            else:
+              print(f"Line {line_num}: Unknown command: {cmd_name}", file=sys.stderr)
+          except Exception as e:
+            print(f"Line {line_num}: Error executing '{line}': {e}", file=sys.stderr)
+    except FileNotFoundError:
+      print(f"File not found: {filename}", file=sys.stderr)
+      sys.exit(1)
+    except Exception as e:
+      print(f"Error reading file {filename}: {e}", file=sys.stderr)
+      sys.exit(1)
+
   #------------------------- Utility Functions
   def __connect_to_server(self, password=None) -> xgt.Connection:
     """Establish a connection to the xGT server"""
@@ -515,8 +620,25 @@ if __name__ == '__main__' :
       help=f"username to use for the connection, default '{getpass.getuser()}'")
   parser.add_argument('-v', '--verbose', action='store_true',
       help="show detailed information")
+  parser.add_argument('-c', '--command', type=str,
+      help="execute a single command and exit")
+  parser.add_argument('-q', '--query', type=str,
+      help="execute a single Cypher query and exit")
+  parser.add_argument('-f', '--file', type=str,
+      help="execute commands from a file")
+  parser.add_argument('--format', type=str, choices=['table', 'json', 'csv'], default='table',
+      help="output format for query results (default: table)")
   options = parser.parse_args(sys.argv[1:])
 
   instance = XgtCli(host=options.host, port=options.port, username=options.user,
                     verbose=options.verbose, debug=options.debug)
-  instance.cmdloop()
+
+  # Handle non-interactive modes
+  if options.query:
+    instance.execute_query_and_exit(options.query, options.format)
+  elif options.command:
+    instance.execute_command_and_exit(options.command)
+  elif options.file:
+    instance.execute_file_and_exit(options.file)
+  else:
+    instance.cmdloop()
