@@ -91,20 +91,30 @@ The xGT Shell can be used both interactively and non-interactively:
 
 ### Non-Interactive Modes
 ```bash
-# Execute a single Cypher query
-./src/xgtsh -q "MATCH (n) RETURN count(n)"
+# Execute a single Cypher query (use single quotes for queries with special characters)
+./src/xgtsh -q 'MATCH (n:Person) RETURN count(*)'
+./src/xgtsh -q 'CREATE (p:Person {name: "Alice", age: 30})'
 
 # Execute with different output formats
-./src/xgtsh -q "MATCH (n) RETURN n LIMIT 5" --format json
-./src/xgtsh -q "MATCH (n) RETURN n LIMIT 5" --format csv
+./src/xgtsh -q 'MATCH (n) RETURN n LIMIT 5' --format json
+./src/xgtsh -q 'MATCH (n) RETURN n LIMIT 5' --format csv
+
+# Execute with specific namespace/dataset
+./src/xgtsh -n Aml -q 'MATCH (n:Accounts) RETURN count(*)'
+./src/xgtsh --namespace Aml -q 'MATCH (t:Transactions) RETURN t LIMIT 10'
 
 # Execute a single xGT shell command
 ./src/xgtsh -c "show default"
 ./src/xgtsh -c "memory"
 
+# Execute commands with namespace
+./src/xgtsh -n Aml -c "show Aml"
+
 # Execute commands from a file
 ./src/xgtsh -f script.xgt
 ```
+
+**Important**: Always use single quotes around Cypher queries to prevent shell interpretation of special characters like parentheses, colons, and asterisks.
 
 ### Output Formats
 - `table` (default) - Formatted table using pandas if available

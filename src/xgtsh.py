@@ -400,13 +400,19 @@ class XgtCli(cmd.Cmd):
 
   #------------------------- Non-interactive execution methods
 
-  def execute_query_and_exit(self, query: str, format: str = 'table') -> None:
+  def execute_query_and_exit(self, query: str, format: str = 'table', namespace: str = None) -> None:
     """Execute a single Cypher query and exit"""
     if self.__server is None:
       print("Not connected to a server", file=sys.stderr)
       sys.exit(1)
 
     try:
+      # Set namespace if specified
+      if namespace:
+        self.__server.set_default_namespace(namespace)
+        if self.__verbose:
+          print(f"Set default namespace to: {namespace}")
+
       job = self.__server.run_job(query)
       data = job.get_data()
 
@@ -436,13 +442,19 @@ class XgtCli(cmd.Cmd):
       print(f"Error executing query: {e}", file=sys.stderr)
       sys.exit(1)
 
-  def execute_command_and_exit(self, command: str) -> None:
+  def execute_command_and_exit(self, command: str, namespace: str = None) -> None:
     """Execute a single shell command and exit"""
     if self.__server is None:
       print("Not connected to a server", file=sys.stderr)
       sys.exit(1)
 
     try:
+      # Set namespace if specified
+      if namespace:
+        self.__server.set_default_namespace(namespace)
+        if self.__verbose:
+          print(f"Set default namespace to: {namespace}")
+
       # Parse the command and execute it
       parts = command.split(None, 1)
       if not parts:
@@ -626,6 +638,8 @@ if __name__ == '__main__' :
       help="execute a single Cypher query and exit")
   parser.add_argument('-f', '--file', type=str,
       help="execute commands from a file")
+  parser.add_argument('-n', '--namespace', type=str,
+      help="set the default namespace/dataset before executing commands")
   parser.add_argument('--format', type=str, choices=['table', 'json', 'csv'], default='table',
       help="output format for query results (default: table)")
   options = parser.parse_args(sys.argv[1:])
@@ -635,9 +649,9 @@ if __name__ == '__main__' :
 
   # Handle non-interactive modes
   if options.query:
-    instance.execute_query_and_exit(options.query, options.format)
+    instance.execute_query_and_exit(options.query, options.format, options.namespace)
   elif options.command:
-    instance.execute_command_and_exit(options.command)
+    instance.execute_command_and_exit(options.command, options.namespace)
   elif options.file:
     instance.execute_file_and_exit(options.file)
   else:
