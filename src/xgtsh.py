@@ -249,7 +249,11 @@ class XgtCli(cmd.Cmd):
       job = self.__server.run_job(line)
       if HASPANDAS:
         data = job.get_data()
-        df = pd.DataFrame(data)
+        # Extract column names from job schema if available
+        columns = None
+        if hasattr(job, 'schema') and job.schema:
+          columns = [field[0] for field in job.schema]
+        df = pd.DataFrame(data, columns=columns)
         print(df)
       else:
         data = job.get_data()
@@ -342,6 +346,45 @@ class XgtCli(cmd.Cmd):
     return False
   complete_show = _namespace_complete
 
+  def do_show_frames(self, line)->bool:
+    """Show all frames in the default namespace"""
+    if self.__server is None:
+      print("Not connected to a server")
+      return False
+
+    default_ns = self.__server.get_default_namespace()
+
+    # Get all frame types using the latest API
+    tables = self.__server.get_frames(namespace=default_ns, frame_type='table')
+    vertices = self.__server.get_frames(namespace=default_ns, frame_type='vertex')
+    edges = self.__server.get_frames(namespace=default_ns, frame_type='edge')
+
+    print(f"Frames in namespace '{default_ns}':")
+    print()
+
+    if tables:
+      print("Table Frames:")
+      for table in tables:
+        if self.__verbose or not table.name.startswith('xgt__'):
+          print(f"  {table.name} ({table.num_rows:,} rows)")
+
+    if vertices:
+      print("Vertex Frames:")
+      for vertex in vertices:
+        if self.__verbose or not vertex.name.startswith('xgt__'):
+          print(f"  {vertex.name} ({vertex.num_vertices:,} vertices)")
+
+    if edges:
+      print("Edge Frames:")
+      for edge in edges:
+        if self.__verbose or not edge.name.startswith('xgt__'):
+          print(f"  {edge.name} ({edge.num_edges:,} edges)")
+
+    if not tables and not vertices and not edges:
+      print("  No frames found")
+
+    return False
+
   def do_verbose(self, line)->bool:
     """Turn verbose setting on/off"""
     fields = line.split()
@@ -421,7 +464,11 @@ class XgtCli(cmd.Cmd):
         print(json.dumps(data, indent=2))
       elif format == 'csv':
         if HASPANDAS:
-          df = pd.DataFrame(data)
+          # Extract column names from job schema if available
+          columns = None
+          if hasattr(job, 'schema') and job.schema:
+            columns = [field[0] for field in job.schema]
+          df = pd.DataFrame(data, columns=columns)
           print(df.to_csv(index=False))
         else:
           import csv
@@ -434,7 +481,11 @@ class XgtCli(cmd.Cmd):
             print(output.getvalue())
       else:  # table format (default)
         if HASPANDAS:
-          df = pd.DataFrame(data)
+          # Extract column names from job schema if available
+          columns = None
+          if hasattr(job, 'schema') and job.schema:
+            columns = [field[0] for field in job.schema]
+          df = pd.DataFrame(data, columns=columns)
           print(df)
         else:
           pprint.pprint(data)
@@ -655,4 +706,10 @@ if __name__ == '__main__' :
   elif options.file:
     instance.execute_file_and_exit(options.file)
   else:
+    # For interactive mode, set the default namespace if specified
+    if options.namespace:
+      # Set namespace using the same approach as the do_default_namespace command
+      instance.do_default_namespace(options.namespace)
+      if options.verbose:
+        print(f"Set default namespace to: {options.namespace}")
     instance.cmdloop()
