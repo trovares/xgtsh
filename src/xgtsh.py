@@ -55,10 +55,11 @@ class XgtCli(cmd.Cmd):
   original_prompt = 'xGT>> '
   prompt = original_prompt
 
-  def __init__(self, host, port, username, verbose = False, debug = False):
+  def __init__(self, host, port, username, password = None, verbose = False, debug = False):
     super().__init__()
 
     self.__username = username
+    self.__password = password
     self.__port = port
     self.__hostname = host
     self.__verbose = verbose
@@ -85,7 +86,7 @@ class XgtCli(cmd.Cmd):
       atexit.register(readline.write_history_file, histfile)
 
   def __del__(self):
-    if READLINE_DEFINED:
+    if READLINE_DEFINED and hasattr(self, '_XgtCli__old_completer_delims'):
       readline.set_completer_delims(self.__old_completer_delims)
 
   def emptyline(self):
@@ -326,21 +327,24 @@ class XgtCli(cmd.Cmd):
     for table in tables:
       if self.__verbose or not table.name.startswith('xgt__'):
         total_table_rows += table.num_rows
-        print(f"TableFrame {table.name} has {table.num_rows:,} rows")
+        acl_str = self.__get_frame_labels_str(table.name)
+        print(f"TableFrame {table.name} has {table.num_rows:,} rows{acl_str}")
     print(f"Total table rows over all frames: {total_table_rows:,}")
     vertices = self.__server.get_frames(namespace=ns, frame_type='vertex')
     total_vertices = 0
     for vertex in vertices:
       if self.__verbose or not vertex.name.startswith('xgt__'):
         total_vertices += vertex.num_rows
-        print(f"VertexFrame {vertex.name} has {vertex.num_vertices:,} vertices")
+        acl_str = self.__get_frame_labels_str(vertex.name)
+        print(f"VertexFrame {vertex.name} has {vertex.num_vertices:,} vertices{acl_str}")
     print(f"Total vertices over all frames: {total_vertices:,}")
     edges = self.__server.get_frames(namespace=ns, frame_type='edge')
     total_edges = 0
     for edge in edges:
       if self.__verbose or not edge.name.startswith('xgt__'):
         total_edges += edge.num_edges
-        print(f"EdgeFrame {edge.name} has {edge.num_edges:,} edges")
+        acl_str = self.__get_frame_labels_str(edge.name)
+        print(f"EdgeFrame {edge.name} has {edge.num_edges:,} edges{acl_str}")
     print(f"Total edges over all frames: {total_edges:,}")
 
     return False
@@ -401,6 +405,23 @@ class XgtCli(cmd.Cmd):
       print("Server is not connected")
     else:
       print(f"Server version: {self.__server.server_version}")
+    return False
+
+  def do_user_labels(self, line)->bool:
+    """Show the current user's security labels"""
+    if self.__server is None:
+      print("Not connected to a server")
+      return False
+    try:
+      labels = self.__server.get_user_labels()
+      if labels:
+        print("User security labels:")
+        for label in labels:
+          print(f"  {label}")
+      else:
+        print("User has no security labels")
+    except xgt.XgtError as e:
+      print(f"Error retrieving user labels: {e}")
     return False
 
   def do_zap(self, line)->bool:
@@ -567,16 +588,33 @@ class XgtCli(cmd.Cmd):
       sys.exit(1)
 
   #------------------------- Utility Functions
-  def __connect_to_server(self, password=None) -> xgt.Connection:
+  def __get_frame_labels_str(self, frame_name: str) -> str:
+    """Return CRUD labels for a frame as a single-line string, or empty string if none exist"""
+    try:
+      labels = self.__server.get_frame_labels(frame_name)
+      has_labels = any(labels.values())
+      if has_labels:
+        acl_parts = []
+        for crud_op in ['create', 'read', 'update', 'delete']:
+          if labels[crud_op]:
+            labels_str = ",".join(labels[crud_op])
+            acl_parts.append(f"{crud_op}={labels_str}")
+        return f"  [ACLs: {'; '.join(acl_parts)}]" if acl_parts else ""
+    except Exception as e:
+      if self.__debug:
+        return f"  [Error retrieving labels: {e}]"
+    return ""
+
+  def __connect_to_server(self) -> xgt.Connection:
     """Establish a connection to the xGT server"""
     conn = None
-    if password:
+    if self.__password:
       try:
         conn = xgt.Connection(port = self.__port,
                               host = self.__hostname,
                               auth = xgt.BasicAuth(
                                   username = self.__username,
-                                  credentials = getpass.getpass())
+                                  password = self.__password)
                              )
       except xgt.XgtError as exc:
         print(f"Unable to connect to xgtd server:\n{exc}")
@@ -681,6 +719,8 @@ if __name__ == '__main__' :
   parser.add_argument('-u', '--user', type=str,
       default=getpass.getuser(),
       help=f"username to use for the connection, default '{getpass.getuser()}'")
+  parser.add_argument('--pw', '--password', type=str, dest='password',
+      help="password to use for BasicAuth connection (optional)")
   parser.add_argument('-v', '--verbose', action='store_true',
       help="show detailed information")
   parser.add_argument('-c', '--command', type=str,
@@ -696,7 +736,7 @@ if __name__ == '__main__' :
   options = parser.parse_args(sys.argv[1:])
 
   instance = XgtCli(host=options.host, port=options.port, username=options.user,
-                    verbose=options.verbose, debug=options.debug)
+                    password=options.password, verbose=options.verbose, debug=options.debug)
 
   # Handle non-interactive modes
   if options.query:
