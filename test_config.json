@@ -1,0 +1,64 @@
+{
+  "graph": "TestGraph",
+  "labels": {
+    "create": ["xgtadmin"],
+    "read": ["demo"],
+    "update": ["xgtadmin"],
+    "delete": ["xgtadmin"]
+  },
+  "nodes": [
+    {
+      "name": "Person",
+      "key": "person_id",
+      "labels": {
+        "read": ["demo"],
+        "create": ["xgtadmin"],
+        "update": ["xgtadmin"],
+        "delete": ["xgtadmin"]
+      },
+      "properties": [
+        {
+          "name": "person_id",
+          "type": "text"
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "age",
+          "type": "int"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "name": "Knows",
+      "source": "Person",
+      "target": "Person",
+      "source_key": "from_person",
+      "target_key": "to_person",
+      "labels": {
+        "read": ["demo"],
+        "create": ["xgtadmin"],
+        "update": ["xgtadmin"],
+        "delete": ["xgtadmin"]
+      },
+      "properties": [
+        {
+          "name": "from_person",
+          "type": "text"
+        },
+        {
+          "name": "to_person",
+          "type": "text"
+        },
+        {
+          "name": "since_year",
+          "type": "int"
+        }
+      ]
+    }
+  ]
+}

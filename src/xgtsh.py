@@ -148,6 +148,303 @@ class XgtCli(cmd.Cmd):
       print("\n".join([f"{k} = {v}" for k,v in sorted(config.items())]))
     return False
 
+  def do_create_from_json(self, line)->bool:
+    """Create namespaces and frames from a JSON configuration file
+
+    Usage: create_from_json [config_file] [--force]
+           create_from_json test_config.json
+           create_from_json test_config.json --force
+
+    The --force flag will drop and recreate the namespace if it already exists.
+    """
+    if self.__server is None:
+      print("Not connected to a server")
+      return False
+
+    # Parse arguments
+    args = line.split()
+    force = '--force' in args or '-f' in args
+
+    # Remove force flags from args to get config path
+    config_arg = None
+    for arg in args:
+      if arg not in ['--force', '-f']:
+        config_arg = arg
+        break
+
+    # Determine config file path
+    config_path = None
+    if config_arg:
+      # User provided a path
+      config_path = os.path.expanduser(config_arg.strip())
+    else:
+      # Search for default config files
+      search_paths = [
+        './xgtsh_config.json',
+        os.path.expanduser('~/.xgtsh/config.json')
+      ]
+      for path in search_paths:
+        if os.path.exists(path):
+          config_path = path
+          break
+
+    # Check if we found a config file
+    if config_path is None:
+      print("Error: No configuration file found.")
+      print("Searched locations:")
+      print("  - ./xgtsh_config.json")
+      print("  - ~/.xgtsh/config.json")
+      print("Please specify a config file path or create a default config file.")
+      return False
+
+    # Check if file exists (for user-specified paths)
+    if not os.path.exists(config_path):
+      print(f"Error: Configuration file not found: {config_path}")
+      return False
+
+    # Read and parse the config file
+    try:
+      import json
+      with open(config_path, 'r') as f:
+        config = json.load(f)
+
+      print(f"Loaded configuration from: {config_path}")
+
+    except json.JSONDecodeError as e:
+      print(f"Error: Invalid JSON in configuration file: {e}")
+      return False
+    except Exception as e:
+      print(f"Error reading configuration file: {e}")
+      return False
+
+    # Validate required fields
+    if 'graph' not in config:
+      print("Error: Configuration must include 'graph' field with namespace name")
+      return False
+
+    namespace = config['graph']
+    namespace_labels = config.get('labels', {})
+
+    # Check if namespace already exists
+    existing_namespaces = self.__server.get_namespaces()
+    namespace_exists = namespace in existing_namespaces
+
+    if namespace_exists:
+      if force:
+        print(f"\nNamespace '{namespace}' already exists - dropping it (--force flag)")
+        try:
+          # Get all frames in the namespace and drop them first
+          frames = self.__server.get_frames(namespace=namespace)
+          if frames:
+            print(f"  Dropping {len(frames)} frames in namespace...")
+            self.__server.drop_frames(frames)
+
+          # Now drop the namespace
+          self.__server.drop_namespace(namespace)
+          print(f"  Namespace '{namespace}' dropped successfully")
+        except xgt.XgtError as e:
+          print(f"Error dropping namespace: {e}")
+          return False
+        except Exception as e:
+          print(f"Unexpected error dropping namespace: {e}")
+          if self.__debug:
+            import traceback
+            traceback.print_exc()
+          return False
+      else:
+        print(f"\nError: Namespace '{namespace}' already exists")
+        print("Use --force flag to drop and recreate: create_from_json config.json --force")
+        return False
+
+    # Create the namespace with labels
+    try:
+      print(f"\nCreating namespace: {namespace}")
+      if namespace_labels:
+        print(f"  With labels: {namespace_labels}")
+        # Try to create namespace with labels
+        # Note: The exact parameter name may need adjustment based on API
+        try:
+          self.__server.create_namespace(namespace, namespace_labels=namespace_labels)
+        except TypeError:
+          # If namespace_labels parameter doesn't exist, try frame_labels
+          try:
+            self.__server.create_namespace(namespace, frame_labels=namespace_labels)
+          except TypeError:
+            # If neither works, create namespace first then set labels
+            self.__server.create_namespace(namespace)
+            print(f"  Warning: Could not set namespace labels during creation")
+            print(f"  Note: Namespace labels may need to be set separately")
+      else:
+        self.__server.create_namespace(namespace)
+        print(f"  No labels specified")
+
+      print(f"Successfully created namespace: {namespace}")
+
+      # Verify labels were set
+      if namespace_labels:
+        try:
+          actual_labels = self.__server.get_frame_labels(f"{namespace}__")
+          if any(actual_labels.values()):
+            print(f"  Verified labels: {actual_labels}")
+          else:
+            print(f"  Warning: Labels were not set on namespace")
+        except Exception as e:
+          if self.__debug:
+            print(f"  Could not verify labels: {e}")
+
+    except xgt.XgtNameError as e:
+      # This shouldn't happen since we check above, but keep as safety net
+      print(f"Error: Namespace '{namespace}' already exists")
+      print("Use --force flag to drop and recreate: create_from_json config.json --force")
+      if self.__verbose:
+        print(f"  {e}")
+      return False
+    except xgt.XgtError as e:
+      print(f"Error creating namespace: {e}")
+      return False
+    except Exception as e:
+      print(f"Unexpected error creating namespace: {e}")
+      if self.__debug:
+        import traceback
+        traceback.print_exc()
+      return False
+
+    # Helper function to convert type strings to xgt types
+    def get_xgt_type(type_str):
+      type_map = {
+        'text': xgt.TEXT,
+        'int': xgt.INT,
+        'float': xgt.FLOAT,
+        'boolean': xgt.BOOLEAN,
+        'date': xgt.DATE,
+        'time': xgt.TIME,
+        'datetime': xgt.DATETIME,
+      }
+      xgt_type = type_map.get(type_str.lower())
+      if xgt_type is None:
+        raise ValueError(f"Unknown type: {type_str}")
+      return xgt_type
+
+    # Set the default namespace for frame creation
+    self.__server.set_default_namespace(namespace)
+
+    # Create vertex frames (nodes)
+    nodes = config.get('nodes', [])
+    created_vertex_frames = {}
+
+    if nodes:
+      print(f"\nCreating {len(nodes)} vertex frame(s)...")
+      for node in nodes:
+        try:
+          node_name = node['name']
+          node_key = node['key']
+          node_labels = node.get('labels', {})
+          properties = node.get('properties', [])
+
+          # Build schema from properties
+          schema = []
+          for prop in properties:
+            prop_name = prop['name']
+            prop_type = get_xgt_type(prop['type'])
+            schema.append([prop_name, prop_type])
+
+          print(f"  Creating vertex frame: {node_name}")
+          print(f"    Key: {node_key}")
+          if node_labels:
+            print(f"    Labels: {node_labels}")
+
+          # Create the vertex frame with labels
+          vertex_frame = self.__server.create_vertex_frame(
+            name=node_name,
+            schema=schema,
+            key=node_key,
+            frame_labels=node_labels if node_labels else None
+          )
+
+          created_vertex_frames[node_name] = vertex_frame
+          print(f"    ✓ Created successfully")
+
+        except KeyError as e:
+          print(f"  Error: Missing required field in node definition: {e}")
+          return False
+        except ValueError as e:
+          print(f"  Error in node '{node.get('name', '?')}': {e}")
+          return False
+        except xgt.XgtError as e:
+          print(f"  Error creating vertex frame '{node.get('name', '?')}': {e}")
+          return False
+
+    # Create edge frames (edges)
+    edges = config.get('edges', [])
+
+    if edges:
+      print(f"\nCreating {len(edges)} edge frame(s)...")
+      for edge in edges:
+        try:
+          edge_name = edge['name']
+          source_name = edge['source']
+          target_name = edge['target']
+          source_key = edge['source_key']
+          target_key = edge['target_key']
+          edge_labels = edge.get('labels', {})
+          properties = edge.get('properties', [])
+
+          # Build schema from properties
+          schema = []
+          for prop in properties:
+            prop_name = prop['name']
+            prop_type = get_xgt_type(prop['type'])
+            schema.append([prop_name, prop_type])
+
+          # Get source and target frames
+          if source_name not in created_vertex_frames:
+            print(f"  Error: Source frame '{source_name}' not found for edge '{edge_name}'")
+            return False
+          if target_name not in created_vertex_frames:
+            print(f"  Error: Target frame '{target_name}' not found for edge '{edge_name}'")
+            return False
+
+          source_frame = created_vertex_frames[source_name]
+          target_frame = created_vertex_frames[target_name]
+
+          print(f"  Creating edge frame: {edge_name}")
+          print(f"    Source: {source_name} -> Target: {target_name}")
+          if edge_labels:
+            print(f"    Labels: {edge_labels}")
+
+          # Create the edge frame with labels
+          edge_frame = self.__server.create_edge_frame(
+            name=edge_name,
+            schema=schema,
+            source=source_frame,
+            target=target_frame,
+            source_key=source_key,
+            target_key=target_key,
+            frame_labels=edge_labels if edge_labels else None
+          )
+
+          print(f"    ✓ Created successfully")
+
+        except KeyError as e:
+          print(f"  Error: Missing required field in edge definition: {e}")
+          return False
+        except ValueError as e:
+          print(f"  Error in edge '{edge.get('name', '?')}': {e}")
+          return False
+        except xgt.XgtError as e:
+          print(f"  Error creating edge frame '{edge.get('name', '?')}': {e}")
+          return False
+
+    # Summary
+    print(f"\n{'='*60}")
+    print(f"Configuration applied successfully!")
+    print(f"  Namespace: {namespace}")
+    print(f"  Vertex frames: {len(nodes)}")
+    print(f"  Edge frames: {len(edges)}")
+    print(f"{'='*60}")
+
+    return False
+
   def do_debug(self, line)->bool:
     """Set debug on or off"""
     if len(line) > 1 and line.lower() == "on":
@@ -239,7 +536,9 @@ class XgtCli(cmd.Cmd):
       print("Not connected to a server")
     else:
       namespaces = self.__server.get_namespaces()
-      print(", ".join(namespaces))
+      for ns in namespaces:
+        acl_str = self.__get_frame_labels_str(f"{ns}__")
+        print(f"{ns}{acl_str}")
     return False
 
   def do_query(self, line:str)->bool:
