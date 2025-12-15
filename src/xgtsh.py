@@ -541,6 +541,52 @@ class XgtCli(cmd.Cmd):
         print(f"{ns}{acl_str}")
     return False
 
+  def do_python(self, line)->bool:
+    """Enter an interactive Python environment with access to the xGT connection
+
+    The following variables are available in the Python environment:
+      conn    - The current xgt.Connection object
+      xgt     - The xgt module
+
+    Example usage:
+      >>> frames = conn.get_frames()
+      >>> for f in frames: print(f.name)
+      >>> conn.run_job("MATCH (n) RETURN count(n)")
+
+    Type 'exit()' or press Ctrl-D to return to the xGT shell.
+    """
+    if self.__server is None:
+      print("Not connected to a server")
+      return False
+
+    import code
+
+    # Set up the namespace with useful variables
+    namespace = {
+      'conn': self.__server,
+      'xgt': xgt,
+      '__name__': '__console__',
+      '__doc__': None,
+    }
+
+    banner = """
+Python interactive environment
+Available variables:
+  conn  - The current xgt.Connection object
+  xgt   - The xgt module
+
+Type 'exit()' or press Ctrl-D to return to the xGT shell.
+"""
+
+    # Start the interactive console
+    try:
+      console = code.InteractiveConsole(locals=namespace)
+      console.interact(banner=banner, exitmsg="Returning to xGT shell...")
+    except SystemExit:
+      pass
+
+    return False
+
   def do_query(self, line:str)->bool:
     """Run a query"""
     if self.__server is None:
@@ -645,9 +691,280 @@ class XgtCli(cmd.Cmd):
         acl_str = self.__get_frame_labels_str(edge.name)
         print(f"EdgeFrame {edge.name} has {edge.num_edges:,} edges{acl_str}")
     print(f"Total edges over all frames: {total_edges:,}")
+    graphs = self.__server.get_frames(namespace=ns, frame_type='graph')
+    total_graphs = 0
+    for graph in graphs:
+      if self.__verbose or not graph.name.startswith('xgt__'):
+        total_graphs += 1
+        member_count = len(graph.graph_members) if hasattr(graph, 'graph_members') else 0
+        acl_str = self.__get_frame_labels_str(graph.name)
+        print(f"GraphFrame {graph.name} has {member_count} member(s){acl_str}")
+    if total_graphs > 0:
+      print(f"Total GraphFrames: {total_graphs}")
 
     return False
   complete_show = _namespace_complete
+
+  def do_show_graphs(self, line)->bool:
+    """Show all GraphFrames in a namespace or the default namespace"""
+    if self.__server is None:
+      print("Not connected to a server")
+      return False
+
+    # Parse arguments
+    fields = line.split()
+    if len(fields) >= 1:
+      ns = str(fields[0])
+    else:
+      ns = self.__server.get_default_namespace()
+
+    try:
+      # Get all graphs in the namespace
+      graphs = self.__server.get_frames(namespace=ns, frame_type='graph')
+
+      if not graphs:
+        print(f"No GraphFrames found in namespace '{ns}'")
+        return False
+
+      print(f"GraphFrames in namespace '{ns}':")
+      for graph in graphs:
+        if self.__verbose or not graph.name.startswith('xgt__'):
+          acl_str = self.__get_frame_labels_str(graph.name)
+          print(f"  {graph.name}{acl_str}")
+          if self.__verbose:
+            # Show member frames if verbose
+            try:
+              member_count = len(graph.graph_members)
+              print(f"    Members: {member_count} frame(s)")
+            except:
+              pass
+
+      print(f"Total: {len(graphs)} GraphFrame(s)")
+    except xgt.XgtError as e:
+      print(f"Error retrieving GraphFrames: {e}")
+
+    return False
+  complete_show_graphs = _namespace_complete
+
+  def do_graph_info(self, line)->bool:
+    """Show detailed information about a GraphFrame
+
+    Usage: graph_info <graph-name> [--schema]
+           graph_info my_graph
+           graph_info my_graph --schema
+
+    Options:
+      --schema  Show detailed schema for all member frames
+    """
+    if self.__server is None:
+      print("Not connected to a server")
+      return False
+
+    fields = line.split()
+    if len(fields) < 1:
+      print(f"Usage: {self.prompt} graph_info <graph-name> [--schema]")
+      return False
+
+    # Parse arguments
+    show_schema = '--schema' in fields or '-s' in fields
+    graph_name = None
+    for field in fields:
+      if field not in ['--schema', '-s']:
+        graph_name = field
+        break
+
+    if not graph_name:
+      print(f"Usage: {self.prompt} graph_info <graph-name> [--schema]")
+      return False
+
+    try:
+      graph = self.__server.get_frame(graph_name)
+
+      # Check if it's actually a graph frame
+      if not hasattr(graph, 'graph_members'):
+        print(f"Error: '{graph_name}' is not a GraphFrame")
+        return False
+
+      print(f"GraphFrame: {graph.name}")
+
+      # Show labels/ACLs
+      acl_str = self.__get_frame_labels_str(graph.name)
+      if acl_str:
+        print(f"Labels: {acl_str}")
+
+      # Show member frames
+      print(f"\nGraph Members:")
+      members = graph.graph_members
+      if isinstance(members, dict):
+        for alias, frame_name in members.items():
+          print(f"  {alias} -> {frame_name}")
+      elif isinstance(members, (set, list)):
+        for frame_name in members:
+          print(f"  {frame_name}")
+      else:
+        print(f"  {members}")
+
+      # Get list of member frame names for detailed display
+      member_names = list(members.values()) if isinstance(members, dict) else list(members)
+
+      # Show frame type information if available
+      if self.__verbose or show_schema:
+        print(f"\nMember Frame Details:")
+        for member_name in member_names:
+          try:
+            member_frame = self.__server.get_frame(member_name)
+            frame_type = "Unknown"
+
+            # Determine frame type and show basic info
+            if hasattr(member_frame, 'source_name'):
+              frame_type = "EdgeFrame"
+              print(f"\n  {member_name}: {frame_type} ({member_frame.num_edges:,} edges)")
+              if show_schema:
+                print(f"    Source: {member_frame.source_name} (key: {member_frame.source_key})")
+                print(f"    Target: {member_frame.target_name} (key: {member_frame.target_key})")
+            elif hasattr(member_frame, 'num_vertices'):
+              frame_type = "VertexFrame"
+              print(f"\n  {member_name}: {frame_type} ({member_frame.num_vertices:,} vertices)")
+              if show_schema and hasattr(member_frame, 'key'):
+                print(f"    Key: {member_frame.key}")
+            else:
+              print(f"\n  {member_name}: {frame_type}")
+
+            # Show schema if requested
+            if show_schema and hasattr(member_frame, 'schema'):
+              print(f"    Schema:")
+              for field in member_frame.schema:
+                field_name = field[0]
+                field_type = field[1]
+                print(f"      {field_name}: {field_type}")
+
+            # Show frame labels/ACLs if they exist
+            if show_schema:
+              try:
+                labels = self.__server.get_frame_labels(member_name)
+                has_labels = any(labels.values())
+                if has_labels:
+                  print(f"    Security Labels:")
+                  for crud_op in ['create', 'read', 'update', 'delete']:
+                    if labels[crud_op]:
+                      labels_str = ", ".join(labels[crud_op])
+                      print(f"      {crud_op}: {labels_str}")
+              except Exception as e:
+                if self.__debug:
+                  print(f"    Error retrieving labels: {e}")
+
+          except Exception as e:
+            print(f"  {member_name}: Error getting details - {e}")
+            if self.__debug:
+              import traceback
+              traceback.print_exc()
+
+    except xgt.XgtError as e:
+      print(f"Error: {e}")
+    except Exception as e:
+      print(f"Error retrieving GraphFrame information: {e}")
+      if self.__debug:
+        import traceback
+        traceback.print_exc()
+
+    return False
+
+  def do_create_graph(self, line)->bool:
+    """Create a new GraphFrame
+
+    Usage: create_graph <graph-name> <frame1> <frame2> ...
+           create_graph my_graph Person knows Company worksAt
+
+    Creates a graph containing the specified vertex and edge frames.
+    All frames must exist in the current namespace.
+    """
+    if self.__server is None:
+      print("Not connected to a server")
+      return False
+
+    fields = line.split()
+    if len(fields) < 2:
+      print(f"Usage: {self.prompt} create_graph <graph-name> <frame1> <frame2> ...")
+      print("Example: create_graph my_graph Person knows Company worksAt")
+      return False
+
+    graph_name = fields[0]
+    frame_names = fields[1:]
+
+    try:
+      # Verify all frames exist
+      frames = set()
+      for frame_name in frame_names:
+        try:
+          frame = self.__server.get_frame(frame_name)
+          frames.add(frame_name)
+        except xgt.XgtError:
+          print(f"Error: Frame '{frame_name}' does not exist")
+          return False
+
+      # Create the graph
+      print(f"Creating GraphFrame '{graph_name}' with {len(frames)} member(s)...")
+      graph = self.__server.create_graph(graph_name, frames)
+      print(f"Successfully created GraphFrame: {graph.name}")
+
+      # Show member frames
+      print(f"Members:")
+      for frame_name in frame_names:
+        print(f"  {frame_name}")
+
+    except xgt.XgtNameError as e:
+      print(f"Error: GraphFrame '{graph_name}' already exists")
+      if self.__verbose:
+        print(f"  {e}")
+    except xgt.XgtError as e:
+      print(f"Error creating GraphFrame: {e}")
+    except Exception as e:
+      print(f"Unexpected error: {e}")
+      if self.__debug:
+        import traceback
+        traceback.print_exc()
+
+    return False
+
+  def do_drop_graph(self, line)->bool:
+    """Drop a GraphFrame
+
+    Usage: drop_graph <graph-name>
+
+    Note: This only drops the graph container, not the member frames.
+    """
+    if self.__server is None:
+      print("Not connected to a server")
+      return False
+
+    fields = line.split()
+    if len(fields) < 1:
+      print(f"Usage: {self.prompt} drop_graph <graph-name>")
+      return False
+
+    graph_name = fields[0]
+
+    try:
+      # Verify it's a graph
+      graph = self.__server.get_frame(graph_name)
+      if not hasattr(graph, 'graph_members'):
+        print(f"Error: '{graph_name}' is not a GraphFrame")
+        return False
+
+      # Drop the graph
+      self.__server.drop_frame(graph_name)
+      print(f"GraphFrame '{graph_name}' has been dropped")
+      print("Note: Member frames were not dropped")
+
+    except xgt.XgtError as e:
+      print(f"Error: {e}")
+    except Exception as e:
+      print(f"Unexpected error: {e}")
+      if self.__debug:
+        import traceback
+        traceback.print_exc()
+
+    return False
 
   def do_show_frames(self, line)->bool:
     """Show all frames in the default namespace"""
@@ -661,6 +978,7 @@ class XgtCli(cmd.Cmd):
     tables = self.__server.get_frames(namespace=default_ns, frame_type='table')
     vertices = self.__server.get_frames(namespace=default_ns, frame_type='vertex')
     edges = self.__server.get_frames(namespace=default_ns, frame_type='edge')
+    graphs = self.__server.get_frames(namespace=default_ns, frame_type='graph')
 
     print(f"Frames in namespace '{default_ns}':")
     print()
@@ -683,7 +1001,14 @@ class XgtCli(cmd.Cmd):
         if self.__verbose or not edge.name.startswith('xgt__'):
           print(f"  {edge.name} ({edge.num_edges:,} edges)")
 
-    if not tables and not vertices and not edges:
+    if graphs:
+      print("Graph Frames:")
+      for graph in graphs:
+        if self.__verbose or not graph.name.startswith('xgt__'):
+          member_count = len(graph.graph_members) if hasattr(graph, 'graph_members') else 0
+          print(f"  {graph.name} ({member_count} member(s))")
+
+    if not tables and not vertices and not edges and not graphs:
       print("  No frames found")
 
     return False
@@ -706,21 +1031,82 @@ class XgtCli(cmd.Cmd):
       print(f"Server version: {self.__server.server_version}")
     return False
 
-  def do_user_labels(self, line)->bool:
-    """Show the current user's security labels"""
+  def do_whoami(self, line)->bool:
+    """Show information about the currently authenticated user
+
+    Displays username, connection details, admin status, security labels,
+    and other user-related information.
+    """
     if self.__server is None:
       print("Not connected to a server")
       return False
+
+    print("User Information:")
+    print(f"  Username: {self.__username}")
+    print(f"  Host: {self.__hostname}")
+    print(f"  Port: {self.__port}")
+
+    # Show userid if available (may differ from username used to connect)
+    try:
+      if hasattr(self.__server, 'userid'):
+        userid = self.__server.userid
+        if userid != self.__username:
+          print(f"  User ID: {userid}")
+    except Exception:
+      pass
+
+    # Try to get admin status
+    try:
+      if hasattr(self.__server, 'is_admin'):
+        is_admin = self.__server.is_admin
+        print(f"  Admin: {is_admin}")
+    except Exception as e:
+      if self.__debug:
+        print(f"  Admin: (unable to determine - {e})")
+
+    # Try to get user roles
+    try:
+      if hasattr(self.__server, 'get_user_roles'):
+        roles = self.__server.get_user_roles()
+        if roles:
+          print(f"  Roles: {', '.join(roles)}")
+    except Exception as e:
+      if self.__debug:
+        print(f"  Roles: (unable to determine - {e})")
+
+    # Show security labels
     try:
       labels = self.__server.get_user_labels()
       if labels:
-        print("User security labels:")
+        print(f"  Security Labels:")
         for label in labels:
-          print(f"  {label}")
+          print(f"    {label}")
       else:
-        print("User has no security labels")
+        print(f"  Security Labels: (none)")
     except xgt.XgtError as e:
-      print(f"Error retrieving user labels: {e}")
+      if self.__debug:
+        print(f"  Security Labels: (error - {e})")
+
+    # Show default namespace
+    try:
+      default_ns = self.__server.get_default_namespace()
+      print(f"  Default Namespace: {default_ns}")
+    except Exception:
+      pass
+
+    # Show memory allocation if verbose
+    if self.__verbose:
+      try:
+        max_memory = self.__server.max_user_memory_size
+        free_memory = self.__server.free_user_memory_size
+        used_memory = max_memory - free_memory
+        print(f"\nMemory Allocation:")
+        print(f"  Used: {used_memory:,.3f} GiB")
+        print(f"  Available: {free_memory:,.3f} GiB")
+        print(f"  Maximum: {max_memory:,.3f} GiB")
+      except Exception:
+        pass
+
     return False
 
   def do_zap(self, line)->bool:
